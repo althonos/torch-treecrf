@@ -11,10 +11,10 @@ class TreeMatrix:
 
     def __init__(self, data: torch.Tensor, device: Union[torch.device, str, None]=None):
         # store data
-        self.data = data
+        _data = torch.as_tensor(data, dtype=torch.int32, device=device)
 
         # get the index of the root
-        self.roots = torch.where(data.sum(axis=1) == 0)[0]
+        self.roots = torch.where(_data.sum(axis=1) == 0)[0]
         if len(self.roots) == 0:
             raise ValueError(f"Failed to find roots in tree: {self.roots}")
 
@@ -22,12 +22,12 @@ class TreeMatrix:
         self._parents = []
         self._children = []
         for i in range(len(self)):
-            self._parents.append( torch.where(self.data[i, :] != 0)[0] )
-            self._children.append( torch.where(self.data[:, i] != 0)[0] )
+            self._parents.append( torch.where(_data[i, :] != 0)[0] )
+            self._children.append( torch.where(_data[:, i] != 0)[0] )
 
         # run a BFS walk and store indices
         done = set()
-        self.bfs_path = -torch.ones(self.data.shape[0]+2, dtype=torch.int32, device=device)
+        self.bfs_path = -torch.ones(_data.shape[0], dtype=torch.int32, device=device)
         n = 0
         q = collections.deque(self.roots)
         while q:
@@ -35,6 +35,9 @@ class TreeMatrix:
             q.extend(self.children(node))
             self.bfs_path[n] = node
             n += 1
+
+        # store data as a sparse matrix
+        self.data = _data.to_sparse()
 
     def __len__(self) -> int:
         return self.data.shape[0]
