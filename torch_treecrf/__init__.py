@@ -10,7 +10,13 @@ __license__ = "MIT"
 
 class TreeCRFLayer(torch.nn.Module):
 
-    def __init__(self, labels: TreeMatrix, n_classes: int = 2, device=None):
+    def __init__(
+        self, 
+        labels: TreeMatrix, 
+        n_classes: int = 2, 
+        device=None, 
+        dtype=None
+    ):
         super().__init__()
 
         # number of classes and labels
@@ -24,13 +30,14 @@ class TreeCRFLayer(torch.nn.Module):
         # `self.pairs[i, j, x_i, x_j]` stores the transitions from 
         # class `x_i` of label `i` to class `x_j` of label `j`
         self.pairs = torch.nn.Parameter(
-            torch.ones(
+            torch.empty(
                 self.n_labels, 
                 self.n_labels, 
                 self.n_classes, 
                 self.n_classes, 
                 requires_grad=True, 
-                device=device
+                device=device,
+                dtype=dtype or torch.float32,
             )
         )
         torch.nn.init.uniform_(self.pairs, 0.1, 1.0)
@@ -255,10 +262,16 @@ class TreeCRFLayer(torch.nn.Module):
 
 class TreeCRF(torch.nn.Module):
 
-    def __init__(self, n_features: int, hierarchy: TreeMatrix):  
+    def __init__(
+        self, 
+        n_features: int, 
+        hierarchy: TreeMatrix,
+        device=None,
+        dtype=None,
+    ):  
         super().__init__()
-        self.linear = torch.nn.Linear(n_features, len(hierarchy))
-        self.crf = TreeCRFLayer(hierarchy)
+        self.linear = torch.nn.Linear(n_features, len(hierarchy), device=device, dtype=dtype)
+        self.crf = TreeCRFLayer(hierarchy, device=device, dtype=dtype)
 
     def forward(self, X):
         emissions = self.linear(X)
