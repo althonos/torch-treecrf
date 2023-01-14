@@ -1,81 +1,29 @@
-import collections
-
 import torch
 
-
-class TreeMatrix:
-    """A tree encoded as an incidence matrix.
-    """
-
-    def __init__(self, data: torch.Tensor, device=None):
-        # store data
-        self.data = data
-
-        # get the index of the root
-        self.roots = torch.where(data.sum(axis=1) == 0)[0]
-        if len(self.roots) == 0:
-            raise ValueError(f"Failed to find roots in tree: {self.roots}")
-
-        # cache parents and children
-        self._parents = []
-        self._children = []
-        for i in range(len(self)):
-            self._parents.append( torch.where(self.data[i, :] != 0)[0] )
-            self._children.append( torch.where(self.data[:, i] != 0)[0] )
-
-        # run a BFS walk and store indices
-        done = set()
-        self.bfs_path = -torch.ones(self.data.shape[0]+2, dtype=torch.int32, device=device)
-        n = 0
-        q = collections.deque(self.roots)
-        while q:
-            node = q.popleft()
-            q.extend(self.children(node))
-            self.bfs_path[n] = node
-            n += 1
-
-    def __len__(self):
-        return self.data.shape[0]
-
-    def __iter__(self):
-        return iter(self.bfs_path)
-
-    def __reversed__(self):
-        return reversed(self.bfs_path)
-
-    def parents(self, i):
-        # return torch.where(self.data[i, :] != 0)[0]
-        return self._parents[i]
-
-    def children(self, i):
-        # return torch.where(self.data[:, i] != 0)[0]
-        return self._children[i]
-
-    def neighbors(self, i):
-        return torch.cat([ self.parents(i), self.children(i) ])
+from .tree import TreeMatrix
 
 
 class TreeCRFLayer(torch.nn.Module):
 
-    def __init__(self, hierarchy: TreeMatrix, n_labels: int = 2, device=None):
+    def __init__(self, labels: TreeMatrix, n_classes: int = 2, device=None):
         super().__init__()
 
         # number of classes and labels
-        self.n_labels = n_labels
-        self.n_classes = len(hierarchy)
+        self.n_labels = len(labels)
+        self.n_classes = n_classes
 
         # class hierarchy stored as an incidence matrix 
-        self.hierarchy = hierarchy
-        self.hierarchy_data = torch.nn.Parameter(hierarchy.data, requires_grad=False)
+        self.labels = labels
+        self.labels_data = torch.nn.Parameter(labels.data, requires_grad=False)
 
-        # `self.pairs[i, j, x_i, x_j]` stores the transitions from class
-        # `i`` in state `x_i` to class `j` in state `x_j`.
+        # `self.pairs[i, j, x_i, x_j]` stores the transitions from 
+        # class `x_i` of label `i` to class `x_j` of label `j`
         self.pairs = torch.nn.Parameter(
             torch.ones(
-                self.n_classes, 
-                self.n_classes, 
                 self.n_labels, 
                 self.n_labels, 
+                self.n_classes, 
+                self.n_classes, 
                 requires_grad=True, 
                 device=device
             )
@@ -84,7 +32,7 @@ class TreeCRFLayer(torch.nn.Module):
 
     def load_state_dict(self, state, strict=True):
         super().load_state_dict(state, strict=strict)
-        self.hierarchy = TreeMatrix(self.hierarchy_data)
+        self.labels = TreeMatrix(self.labels_data)
 
     def _free_energy(self, emissions, classes):
         r"""Compute the free energy of the class labeling given emissions.
@@ -152,8 +100,11 @@ class TreeCRFLayer(torch.nn.Module):
                 (in log-space) of shape :math:`(n_classes, n_labels)`.
 
         """
-        batch_size, n_classes, n_labels = emissions.shape
-        alphas = torch.zeros( emissions.shape[0], self.n_classes, self.n_labels, device=self.pairs.device)
+        batch_size, n_labels, n_classes = emissions.shape
+        assert n_labels == self.n_labels
+        assert n_classes == self.n_classes
+
+        alphas = torch.zeros( emissions.shape[0], self.n_labels, self.n_classes, device=self.pairs.device)
 
         # iterate from leaves to root
         # for obs in range(emissions.shape[0]):
@@ -177,10 +128,10 @@ class TreeCRFLayer(torch.nn.Module):
         #                 scores += messages[:, k, j]
         #             messages[:, j, i, x_i] = torch.logsumexp(scores, 1)
 
-        for j in reversed(self.hierarchy):
+        for j in reversed(self.labels):
             local_scores = emissions[:, j, :] + alphas[:, j, :]
-            for i in self.hierarchy.parents(j):
-                trans_scores = self.pairs[i, j, :, :].repeat(1, 1, batch_size).reshape(n_labels, batch_size, n_labels)
+            for i in self.labels.parents(j):
+                trans_scores = self.pairs[i, j, :, :].repeat(1, 1, batch_size).reshape(n_classes, batch_size, n_classes)
                 alphas[:, i, :] += torch.logsumexp(local_scores + trans_scores, dim=2).T
 
         return alphas
@@ -189,15 +140,18 @@ class TreeCRFLayer(torch.nn.Module):
         r"""Compute messages passed from the roots to the leaves.
 
         Messages are in log-space for numerical stability. The result in a
-        tensor :math:`B` of shape :math:`(*, C, L)` where :math:`*` is the 
+        tensor :math:`B` of shape :math:`(*, L, C)` where :math:`*` is the 
         batch size, :math:`C` is the number of classes, and :math:`L` the 
         number of labels, such that :math:`B[:, i, x_i] = \Beta_i(x_i)` is
         the sum of the messages passed from the parents of :math:`i` to 
         class :math:`i` for state :math:`x_i`.
 
         """
-        batch_size, n_classes, n_labels = emissions.shape
-        betas = torch.zeros( emissions.shape[0], self.n_classes, self.n_labels, device=self.pairs.device)
+        batch_size, n_labels, n_classes = emissions.shape
+        assert n_labels == self.n_labels
+        assert n_classes == self.n_classes
+
+        betas = torch.zeros( emissions.shape[0], self.n_labels, self.n_classes, device=self.pairs.device)
 
         # iterate from root to leaves
         # for obs in range(emissions.shape[0]):
@@ -211,16 +165,16 @@ class TreeCRFLayer(torch.nn.Module):
         #                     scores += messages[obs, k, j]
         #                 messages[obs, j, i, x_i] = torch.logsumexp(scores, 0)
 
-        for j in self.hierarchy:
+        for j in self.labels:
             local_scores = emissions[:, j, :] + betas[:, j, :]
-            for i in self.hierarchy.children(j):
-                trans_scores = self.pairs[i, j, :, :].repeat(1, 1, batch_size).reshape(n_labels, batch_size, n_labels)
+            for i in self.labels.children(j):
+                trans_scores = self.pairs[i, j, :, :].repeat(1, 1, batch_size).reshape(n_classes, batch_size, n_classes)
                 betas[:, i, :] += torch.logsumexp(local_scores + trans_scores, dim=2).T
 
         return betas
 
     def forward(self, X):
-        r"""Compute the marginal probabilities for every class given :math:`X`.
+        r"""Compute the marginal probabilities for every label given :math:`X`.
 
         By definition, in a CRF the conditional probability for is defined as:
 
@@ -228,10 +182,10 @@ class TreeCRFLayer(torch.nn.Module):
 
             p(Y | X) = \frac1Z \Prod_{i=1}^n{\Psi_i(y_i, x_i)} \Prod_{j \in \mathcal{N}(i)}
 
-        where :math:`\mathcal{N}(i)` is set of neighbours of class :math:`i`
-        in the graph.
+        where :math:`\mathcal{N}(i)` is set of neighbours of label :math:`i`
+        in the tree.
 
-        Marginal probabilities for observation :math:`y_i` are obtained by 
+        Marginal probabilities for label :math:`y_i` are obtained by 
         summing over conditional probabilities. Once factoring the messages
         passed over the model graph with the *belief propagation*, we get:
 
@@ -276,15 +230,19 @@ class TreeCRFLayer(torch.nn.Module):
 
         :math:`\Alpha` and :math:`\Beta` can be computed efficiently with 
         the forward-backward algorithm, and stored in a tensor of shape
-        :math:`(*, C, L)`.
+        :math:`(*, L, C)`.
 
         """
+        batch_size, n_labels, n_classes = X.shape
+        assert n_labels == self.n_labels
+        assert n_classes == self.n_classes
+
         alphas = self._upward_messages(X)  
         betas = self._downward_messages(X)
 
-        logits = X + alphas + betas
-        logZ = torch.logsumexp(logits, 2).unsqueeze(2)
-        logP = logits - logZ
+        scores = X + alphas + betas
+        logZ = torch.logsumexp(scores, 2).unsqueeze(2)
+        logP = scores - logZ
 
         assert torch.all(logP <= 0)
         return logP
@@ -295,7 +253,7 @@ class TreeCRF(torch.nn.Module):
     def __init__(self, n_features: int, hierarchy: TreeMatrix):  
         super().__init__()
         self.linear = torch.nn.Linear(n_features, len(hierarchy))
-        self.crf = TreeCRFLayer(hierarchy, n_labels=2)
+        self.crf = TreeCRFLayer(hierarchy)
 
     def forward(self, X):
         emissions = self.linear(X)
