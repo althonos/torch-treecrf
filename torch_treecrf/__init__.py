@@ -3,6 +3,11 @@ import torch
 from .tree import TreeMatrix
 
 
+__version__ = "0.0.1"
+__author__ = "Martin Larralde"
+__license__ = "MIT"
+
+
 class TreeCRFLayer(torch.nn.Module):
 
     def __init__(self, labels: TreeMatrix, n_classes: int = 2, device=None):
