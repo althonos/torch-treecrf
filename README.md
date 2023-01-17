@@ -25,13 +25,17 @@ form of CRFs are Linear-chain CRF, where a prediction depends on
 an observed variable, as well as the prediction before and after it 
 (the *context*). Linear-chain CRFs are widely used in Natural Language Processing.
 
-![linear chain crf](https://github.com/althonos/torch-treecrf/raw/main/static/linear-chain-crf.svg?raw=true)
+<p align="center">
+  <img height="150" src="https://github.com/althonos/torch-treecrf/raw/main/static/linear-chain-crf.svg?raw=true">
+</p>
 
 In 2006, Tang *et al.*[[1]](#ref1) introduced Tree-structured CRFs to model hierarchical 
 relationships between predicted variables, allowing dependencies between 
 a prediction variable and its parents and children.
 
-![tree structured crf](https://github.com/althonos/torch-treecrf/raw/main/static/tree-structured-crf.svg?raw=true)
+<p align="center">
+  <img height="280" src="https://github.com/althonos/torch-treecrf/raw/main/static/tree-structured-crf.svg?raw=true">
+</p>
 
 This package implements a generic Tree-structured CRF layer in Torch. The 
 layer can be stacked on top of a linear layer to implement a proper 
@@ -79,7 +83,9 @@ To create a Tree-structured CRF, you must first define the tree encoding the
 relationships between variables. Let's build a simple CRF for 4 classes 
 with the following hierarchy:
 
-![example](https://github.com/althonos/torch-treecrf/raw/main/static/example.svg?raw=true)
+<p align="center">
+  <img height="150" src="https://github.com/althonos/torch-treecrf/raw/main/static/example.svg?raw=true">
+</p>
 
 First, define an incidence matrix $M$ representing the hierarchy, such that
 $M_{i,j}$ is $1$ if $j$ is a parent of $i$:
@@ -132,5 +138,5 @@ in the [Zeller team](https://github.com/zellerlab).*
 
 - <a id="ref1">[1]</a> Tang, Jie, Mingcai Hong, Juanzi Li, and Bangyong Liang. ‘Tree-Structured Conditional Random Fields for Semantic Annotation’. In The Semantic Web - ISWC 2006, edited by Isabel Cruz, Stefan Decker, Dean Allemang, Chris Preist, Daniel Schwabe, Peter Mika, Mike Uschold, and Lora M. Aroyo, 640–53. Lecture Notes in Computer Science. Berlin, Heidelberg: Springer, 2006. [doi:10.1007/11926078_46](https://doi.org/10.1007/11926078_46).
 - <a id="ref2">[2]</a> Pearl, Judea. ‘Reverend Bayes on Inference Engines: A Distributed Hierarchical   Approach’. In Proceedings of the Second AAAI Conference on Artificial Intelligence, 133–136. AAAI’82. Pittsburgh, Pennsylvania: AAAI Press, 1982.
-- <a id="ref2">[3]</a> Bach, Francis, and Guillaume Obozinski. ‘Sum Product Algorithm and Hidden Markov Model’, ENS Course Material, 2016. http://imagine.enpc.fr/%7Eobozinsg/teaching/mva_gm/lecture_notes/lecture7.pdf.
+- <a id="ref3">[3]</a> Bach, Francis, and Guillaume Obozinski. ‘Sum Product Algorithm and Hidden Markov Model’, ENS Course Material, 2016. http://imagine.enpc.fr/%7Eobozinsg/teaching/mva_gm/lecture_notes/lecture7.pdf.
 
