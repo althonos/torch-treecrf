@@ -27,6 +27,10 @@ an observed variable, as well as the prediction before and after it
   <img height="150" src="https://github.com/althonos/torch-treecrf/raw/main/static/linear-chain-crf.svg?raw=true">
 </p>
 
+$$
+P(Y | X) = \frac{1}{Z(X)} \prod_{i=1}^n{ \Psi_i(y_i, x_i) } \prod_{i=2}^n{ \Psi_{i-1,i}(y_{i-1}, y_i)}
+$$
+
 In 2006, Tang *et al.*[[1]](#ref1) introduced Tree-structured CRFs to model hierarchical 
 relationships between predicted variables, allowing dependencies between 
 a prediction variable and its parents and children.
@@ -34,6 +38,10 @@ a prediction variable and its parents and children.
 <p align="center">
   <img height="280" src="https://github.com/althonos/torch-treecrf/raw/main/static/tree-structured-crf.svg?raw=true">
 </p>
+
+$$
+P(Y | X) = \frac{1}{Z(X)} \prod_{i=1}^{n}{ \Psi_i(y_i, x_i) } \prod_{j \in \mathcal{N}(i)}{ \Psi_{j,i}(y_j, y_i)}
+$$
 
 This package implements a generic Tree-structured CRF layer in Torch. The 
 layer can be stacked on top of a linear layer to implement a proper 
@@ -43,16 +51,34 @@ implemented using Belief Propagation[[2]](#ref2), allowing for exact inference
 on trees[[3]](#ref3):
 
 $$
-\begin{array}{lcc}
-p(y_i | x_i) 
+\begin{aligned}
+P(y_i | X) 
 & = 
-    \frac1Z \Psi_i(y_i, x_i) 
-    & \underbrace{\prod_{j \in \mathcal{C}(i)}{\mu_{j \to i}(y_i)}}
+    \frac{1}{Z(X)} \Psi_i(y_i, x_i) 
+    & \underbrace{\prod_{j \in \mathcal{C}(i)}{\mu_{j \to i}(y_i)}} &
     & \underbrace{\prod_{j \in \mathcal{P}(i)}{\mu_{j \to i}(y_i)}} \\
 & = \frac1Z \Psi_i(y_i, x_i) 
-    & \alpha_i(y_i)
-    & \beta_i(y_i) \\
-\end{array}
+    & \alpha_i(y_i) &
+    & \beta_i(y_i)  \\
+\end{aligned}
+$$
+
+where for every node $i$, the message from the parents $\mathcal{P}(i)$ and 
+the children $\mathcal{C}(i)$ is computed recursively with the sum-product algorithm[[4]](#ref4):
+
+$$
+\begin{aligned}
+\forall j \in \mathcal{C}(i), \mu_{j \to i}(y_i) = \sum_{y_j}{ 
+  \Psi_{i,j}(y_i, y_j) 
+  \Psi_j(y_j, x_j) 
+  \prod_{k \in \mathcal{C}(j)}{\mu_{k \to j}(y_j)} 
+} \\
+\forall j \in \mathcal{P}(i), \mu_{j \to i}(y_i) = \sum_{y_j}{ 
+  \Psi_{i,j}(y_i, y_j) 
+  \Psi_j(y_j, x_j) 
+  \prod_{k \in \mathcal{P}(j)}{\mu_{k \to j}(y_j)} 
+} \\
+\end{aligned}
 $$
 
 
@@ -137,4 +163,6 @@ in the [Zeller team](https://github.com/zellerlab).*
 - <a id="ref1">[1]</a> Tang, Jie, Mingcai Hong, Juanzi Li, and Bangyong Liang. ‘Tree-Structured Conditional Random Fields for Semantic Annotation’. In The Semantic Web - ISWC 2006, edited by Isabel Cruz, Stefan Decker, Dean Allemang, Chris Preist, Daniel Schwabe, Peter Mika, Mike Uschold, and Lora M. Aroyo, 640–53. Lecture Notes in Computer Science. Berlin, Heidelberg: Springer, 2006. [doi:10.1007/11926078_46](https://doi.org/10.1007/11926078_46).
 - <a id="ref2">[2]</a> Pearl, Judea. ‘Reverend Bayes on Inference Engines: A Distributed Hierarchical   Approach’. In Proceedings of the Second AAAI Conference on Artificial Intelligence, 133–136. AAAI’82. Pittsburgh, Pennsylvania: AAAI Press, 1982.
 - <a id="ref3">[3]</a> Bach, Francis, and Guillaume Obozinski. ‘Sum Product Algorithm and Hidden Markov Model’, ENS Course Material, 2016. http://imagine.enpc.fr/%7Eobozinsg/teaching/mva_gm/lecture_notes/lecture7.pdf.
+- <a id="ref4>">[4]</a> Kschischang, Frank R., Brendan J. Frey, and Hans-Andrea Loeliger. ‘Factor Graphs and the Sum-Product Algorithm’. IEEE Transactions on Information Theory 47, no. 2 (February 2001): 498–519. [doi:10.1109/18.910572](https://doi.org/10.1109/18.910572).
+
 
