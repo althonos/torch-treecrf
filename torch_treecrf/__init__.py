@@ -122,7 +122,7 @@ class TreeCRFLayer(torch.nn.Module):
         Messages are in log-space for numerical stability. The result in a
         tensor :math:`A` of shape :math:`(*, L, C)` where :math:`*` is the 
         batch size, :math:`C` is the number of classes, and :math:`L` the 
-        number of labels, such that :math:`A[:, i, x_i] = \Alpha_i(x_i)` is
+        number of labels, such that :math:`A[:, i, x_i] = \alpha_i(x_i)` is
         the sum of the messages passed from the children of :math:`i` to 
         class :math:`i` for state :math:`x_i`.
 
@@ -173,7 +173,7 @@ class TreeCRFLayer(torch.nn.Module):
         Messages are in log-space for numerical stability. The result in a
         tensor :math:`B` of shape :math:`(*, L, C)` where :math:`*` is the 
         batch size, :math:`C` is the number of classes, and :math:`L` the 
-        number of labels, such that :math:`B[:, i, x_i] = \Beta_i(x_i)` is
+        number of labels, such that :math:`B[:, i, x_i] = \beta_i(x_i)` is
         the sum of the messages passed from the parents of :math:`i` to 
         class :math:`i` for state :math:`x_i`.
 
@@ -296,6 +296,24 @@ class TreeCRFLayer(torch.nn.Module):
 
 
 class TreeCRF(torch.nn.Module):
+    """A Tree-structured CRF for binary classification of labels.
+
+    This implementation uses raw emission scores from a linear layer for
+    the node potentials:
+
+    .. math::
+
+        \Psi_i(y_i, x_i) = a^T x_i + b
+
+    This is slightly different from a multiclass problem, where the node 
+    potentials would be taken as the logarithm of the probability from 
+    the linear layer, i.e:
+
+    .. math::
+
+        \Psi_i(y_i, x_i) = \log(expit(a^T x_i + b))
+
+    """
 
     def __init__(
         self, 
@@ -309,9 +327,9 @@ class TreeCRF(torch.nn.Module):
         self.crf = TreeCRFLayer(hierarchy, device=device, dtype=dtype)
 
     def forward(self, X):
-        emissions = self.linear(X)
-        logP = self.crf(torch.stack((-emissions, emissions), dim=2))
-        return torch.exp(logP)[:, 1]
+        emissions_pos = self.linear(X)
+        emissions_all = torch.stack((-emissions_pos, emissions_pos), dim=2)
+        return self.crf(emissions_all)[:, 1].exp()
 
 
 

@@ -12,12 +12,12 @@ class TestTreeCRFLayer(unittest.TestCase):
         """
 
         matrix = TreeMatrix([[ 0, 0, 0 ], [ 1, 0, 0 ], [ 1, 0, 0 ]])
-        layer = TreeCRFLayer(matrix, n_classes=2)
+        layer = TreeCRFLayer(matrix, n_classes=5)
 
         # mock emission scores generated from a linear layer
         base_probas = torch.rand(100, layer.n_labels, layer.n_classes)
         base_probas /= base_probas.sum(dim=2).unsqueeze(2)
-        emissions = torch.logit(base_probas)
+        emissions = torch.log(base_probas)
 
         # check that the CRF computes probabilities that sum to 1.0 for all labels
         probas = torch.exp(layer(emissions)) 

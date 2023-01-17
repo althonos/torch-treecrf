@@ -71,17 +71,17 @@ $ pip install torch-treecrf
 
 ## 📋 Features
 
-- Minibatch support
 - Encoding of directed graphs in an adjacency matrix, with $\mathcal{O}(1)$ retrieval of children and parents for any node, and $\mathcal{O}(N+E)$ storage.
 - Support for any acyclic hierarchy representable as a [Directed Acyclic Graph](https://en.wikipedia.org/wiki/Directed_acyclic_graph) and not just directed trees, allowing prediction of classes such as the [Gene Ontology](https://geneontology.org).
-- Multiclass classification, provided all the target labels have the same number of classes: $Y \in \left\\{ 0, .., C \right\\}^L$.
+- Multiclass output, provided all the target labels have the same number of classes: $Y \in \left\\{ 0, .., C \right\\}^L$.
+- Minibatch support, with vectorized computation of the messages $\alpha_i(y_i)$ and $\beta_i(y_i)$.
 
 
 ## 💡 Example
 
 To create a Tree-structured CRF, you must first define the tree encoding the 
-relationships between variables. Let's build a simple CRF for 4 classes 
-with the following hierarchy:
+relationships between variables. Let's build a simple CRF for a root variable
+with two children: 
 
 <p align="center">
   <img height="150" src="https://github.com/althonos/torch-treecrf/raw/main/static/example.svg?raw=true">
