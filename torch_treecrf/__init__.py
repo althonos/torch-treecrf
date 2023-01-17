@@ -1,3 +1,15 @@
+"""A PyTorch implementation of Tree-structured Conditional Random Fields.
+
+References:
+    - Tang, Jie, Mingcai Hong, Juanzi Li, and Bangyong Liang. 
+      "Tree-Structured Conditional Random Fields for Semantic Annotation". 
+      In The Semantic Web - ISWC 2006, edited by Isabel Cruz, Stefan Decker, 
+      Dean Allemang, Chris Preist, Daniel Schwabe, Peter Mika, Mike Uschold, 
+      and Lora M. Aroyo, 640-53. Lecture Notes in Computer Science. 
+      Berlin, Heidelberg: Springer, 2006. :doi:`10.1007/11926078_46`.
+
+"""
+
 import torch
 
 from .tree import TreeMatrix
@@ -6,6 +18,12 @@ from .tree import TreeMatrix
 __version__ = "0.0.1"
 __author__ = "Martin Larralde"
 __license__ = "MIT"
+
+__all__ = [
+    "TreeMatrix",
+    "TreeCRFLayer",
+    "TreeCRF",
+]
 
 
 class TreeCRFLayer(torch.nn.Module):
@@ -46,15 +64,16 @@ class TreeCRFLayer(torch.nn.Module):
         super().load_state_dict(state, strict=strict)
         self.labels = TreeMatrix(self.labels_data)
 
-    def _free_energy(self, emissions, classes):
-        r"""Compute the free energy of the class labeling given emissions.
+    def _free_energy(self, X, Y):
+        r"""Compute the free energy of :math:`Y` given emissions :math:`X`.
 
-        The free energy of a conditional random field can be computed
-        with the following definition:
+        The free energy of a label vector can be computed with the following 
+        definition for a conditional random field:
 
         .. math::
 
-            E(X, Y) = \sum_{i}{ \Psi_i(y_i, x_i) } + \sum_{i, j}{ \Psi_{i, j}(y_i, y_j) }
+            E(X, Y) = \sum_{i}{ \Psi_i(y_i, x_i) } 
+                    + \sum_{i, j}{ \Psi_{i, j}(y_i, y_j) }
 
         such that the conditional probability :math:`P(Y | X)` can be
         expressed as:
@@ -68,32 +87,32 @@ class TreeCRFLayer(torch.nn.Module):
         the entire event universe.
 
         Arguments:
-            emissions (torch.Tensor): Input emissions in log-space, as obtained
-                from a linear layer. Shape :math:`(*, C, K)` where :math:`C`
-                is the number of classes, and :math:`K` the number of labels.
-            Y (torch.Tensor): Class labels. Shape :math:`(*, C)`.
+            X (torch.Tensor): Input emissions in log-space, as obtained
+                from a linear layer, of shape :math:`(*, L, C)` where 
+                :math:`C` is the number of classes, and :math:`L` the number 
+                of labels.
+            Y (torch.Tensor): Labels vectors, of shape :math:`(*, C)`.
 
         Returns:
             torch.Tensor: A tensor of shape :math:`(*)` with energy for
             each batch member, in log-space.
 
         """
-        assert emissions.shape[0] == classes.shape[0]
+        assert X.shape[0] == classes.shape[0]
         assert classes.shape[1] == len(self.hierarchy)
 
-        energy = torch.zeros( emissions.shape[0], device=DEVICE)
+        energy = torch.zeros(X.shape[0], device=DEVICE)
 
         for i in range(len(self.hierarchy)):
 
             # For each i, take log(P(Yi = yi)), whic corresponds to
-            # emissions[i] if y_i = 0 and -emissions[i] otherwise.
-            energy += emissions[:, i].gather(1, classes[:, i].unsqueeze(1)).squeeze()
+            energy += X[:, i].gather(1, Y[:, i].unsqueeze(1)).squeeze()
 
             # For each (i, j) neighbors in the polytree,
             # compute pairwise potential
             # TODO: vectorize?
             for j in self.hierarchy.neighbors(i):
-                energy += self.pairs[i, j, classes[:, i], classes[:, j]]
+                energy += self.pairs[i, j, Y[:, i], Y[:, j]]
 
         return energy
 
@@ -101,7 +120,7 @@ class TreeCRFLayer(torch.nn.Module):
         r"""Compute messages passed from the leaves to the roots.
 
         Messages are in log-space for numerical stability. The result in a
-        tensor :math:`A` of shape :math:`(*, C, L)` where :math:`*` is the 
+        tensor :math:`A` of shape :math:`(*, L, C)` where :math:`*` is the 
         batch size, :math:`C` is the number of classes, and :math:`L` the 
         number of labels, such that :math:`A[:, i, x_i] = \Alpha_i(x_i)` is
         the sum of the messages passed from the children of :math:`i` to 
@@ -192,7 +211,9 @@ class TreeCRFLayer(torch.nn.Module):
 
         .. math::
 
-            p(Y | X) = \frac1Z \Prod_{i=1}^n{\Psi_i(y_i, x_i)} \Prod_{j \in \mathcal{N}(i)}
+            p(Y | X) = \frac1Z 
+                       \Prod_{i=1}^n{\Psi_i(y_i, x_i)} 
+                       \Prod_{j \in \mathcal{N}(i)}
 
         where :math:`\mathcal{N}(i)` is set of neighbours of label :math:`i`
         in the tree.
@@ -203,29 +224,43 @@ class TreeCRFLayer(torch.nn.Module):
 
         .. math::
 
-            p(y_i | x_i) = \frac1Z \Psi_i(y_i, x_i) \Prod_{j in \mathcal{N}(i) \mu_{j \to i}(y_i)}
+            p(y_i | x_i) = \frac1Z \Psi_i(y_i, x_i) 
+                           \Prod_{j in \mathcal{N}(i) \mu_{j \to i}(y_i)}
 
         where message from children to parents are defined by recurence, 
         :math:`\forall i \in \{ 1, .., n \} , \forall j \in \mathcal{C}(i)`, 
 
         .. math::
 
-            \mu_{j \to i}(y_i) = \sum_{y_j}{ \Psi_{i,j}(y_i, y_j) \Psi_j(y_j, x_j) \Prod_{k \in \mathcal{C}(j)}{ \mu_{k \to j}(y_j) } }
+            \mu_{j \to i}(y_i) = \sum_{y_j}{ 
+                \Psi_{i,j}(y_i, y_j) 
+                \Psi_j(y_j, x_j) 
+                \Prod_{k \in \mathcal{C}(j)}{ \mu_{k \to j}(y_j) } 
+            }
 
-        (and conversely for messages from parents to children).
+        (and conversely for messages from parents to children). This 
+        reccurence relationship is known as the Sum Product Algorithm.
 
         The partition function is computed so that the probabilities are
-        well defined, i.e. that they sum to one for all values of :math:`y_i`:
+        well defined, i.e. that they sum to one for every label of class 
+        :math:`i`:
 
         .. math::
 
-            Z = \sum_{y_i} \Psi_i(y_i, x_i) \Prod_{j in \mathcal{N}(i) \mu_{j \to i}(y_i)}
+            Z = \sum_{y_i}{ 
+                \Psi_i(y_i, x_i) 
+                \Prod_{j in \mathcal{N}(i)}{\mu_{j \to i}(y_i)}
+            }
 
         In log-space, the marginals can be expressed as a sum:
 
         .. math::
 
-            \log p(y_i | x_i) = \log \Psi_i(y_i, x_i) - \log Z + \sum_{j in \mathcal{N}(i)}{ \log \mu_{j \to i}(y_i) }
+            \log p(y_i | x_i) = \log \Psi_i(y_i, x_i) 
+                                - \log Z 
+                                + \sum_{j in \mathcal{N}(i)}{ 
+                                    \log \mu_{j \to i}(y_i) 
+                                }
         
         For a tree CRF in particular, the last term can be decomposed in two 
         components: the sum of messages passed from the parents, and the sum 
