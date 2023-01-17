@@ -17,6 +17,10 @@ class TestTreeCRF(unittest.TestCase):
         for i in range(features.shape[0]):
             self.assertAlmostEqual(probas[i].sum().item(), 1.0, places=3)
 
-
-  
+    def test_state_dict(self):
+        matrix = TreeMatrix([[ 0, 0, 0 ], [ 1, 0, 0 ], [ 1, 0, 0 ]])
+        model = TreeCRF(30, matrix)
+        d = model.state_dict()
+        model.load_state_dict(d)
+        self.assertTrue(torch.all(model.crf.labels.data.to_dense() == matrix.data.to_dense()))
 

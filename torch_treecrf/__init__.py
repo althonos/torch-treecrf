@@ -43,7 +43,7 @@ class TreeCRFLayer(torch.nn.Module):
 
         # class hierarchy stored as an incidence matrix 
         self.labels = labels
-        self.labels_data = torch.nn.Parameter(labels.data, requires_grad=False)
+        self.register_buffer("labels_data", labels.data, persistent=True)
 
         # `self.pairs[i, j, x_i, x_j]` stores the transitions from 
         # class `x_i` of label `i` to class `x_j` of label `j`
