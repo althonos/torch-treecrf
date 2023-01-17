@@ -5,22 +5,20 @@
 [![Actions](https://img.shields.io/github/actions/workflow/status/althonos/torch-treecrf/test.yml?branch=main&logo=github&style=flat-square&maxAge=300)](https://github.com/althonos/torch-treecrf/actions)
 [![Coverage](https://img.shields.io/codecov/c/gh/althonos/torch-treecrf?style=flat-square&maxAge=3600)](https://codecov.io/gh/althonos/torch-treecrf/)
 [![License](https://img.shields.io/badge/license-GPLv3-blue.svg?style=flat-square&maxAge=2678400)](https://choosealicense.com/licenses/gpl-3.0/)
-<!-- [![PyPI](https://img.shields.io/pypi/v/torch-treecrf.svg?style=flat-square&maxAge=3600)](https://pypi.org/project/torch-treecrf) -->
-<!-- [![Bioconda](https://img.shields.io/conda/vn/bioconda/torch-treecrf?style=flat-square&maxAge=3600&logo=anaconda)](https://anaconda.org/bioconda/torch-treecrf) -->
-<!-- [![Wheel](https://img.shields.io/pypi/wheel/torch-treecrf.svg?style=flat-square&maxAge=3600)](https://pypi.org/project/torch-treecrf/#files) -->
-<!-- [![Python Versions](https://img.shields.io/pypi/pyversions/torch-treecrf.svg?style=flat-square&maxAge=3600)](https://pypi.org/project/torch-treecrf/#files) -->
-<!-- [![Python Implementations](https://img.shields.io/badge/impl-universal-success.svg?style=flat-square&maxAge=3600&label=impl)](https://pypi.org/project/torch-treecrf/#files) -->
-<!-- [![Source](https://img.shields.io/badge/source-GitHub-303030.svg?maxAge=2678400&style=flat-square)](https://github.com/althonos/torch-treecrf/) -->
-<!-- [![Mirror](https://img.shields.io/badge/mirror-EMBL-009f4d?style=flat-square&maxAge=2678400)](https://git.embl.de/larralde/torch-treecrf/) -->
-<!-- [![GitHub issues](https://img.shields.io/github/issues/althonos/torch-treecrf.svg?style=flat-square&maxAge=600)](https://github.com/althonos/torch-treecrf/issues) -->
-<!-- [![Docs](https://img.shields.io/readthedocs/torch-treecrf/latest?style=flat-square&maxAge=600)](https://torch-treecrf.readthedocs.io) -->
-<!-- [![Changelog](https://img.shields.io/badge/keep%20a-changelog-8A0707.svg?maxAge=2678400&style=flat-square)](https://github.com/althonos/torch-treecrf.py/blob/master/CHANGELOG.md) -->
-<!-- [![Downloads](https://img.shields.io/badge/dynamic/json?style=flat-square&color=303f9f&maxAge=86400&label=downloads&query=%24.total_downloads&url=https%3A%2F%2Fapi.pepy.tech%2Fapi%2Fprojects%2Ftorch-treecrf)](https://pepy.tech/project/torch-treecrf) -->
+[![PyPI](https://img.shields.io/pypi/v/torch-treecrf.svg?style=flat-square&maxAge=3600)](https://pypi.org/project/torch-treecrf)
+[![Wheel](https://img.shields.io/pypi/wheel/torch-treecrf.svg?style=flat-square&maxAge=3600)](https://pypi.org/project/torch-treecrf/#files)
+[![Python Versions](https://img.shields.io/pypi/pyversions/torch-treecrf.svg?style=flat-square&maxAge=3600)](https://pypi.org/project/torch-treecrf/#files)
+[![Python Implementations](https://img.shields.io/badge/impl-universal-success.svg?style=flat-square&maxAge=3600&label=impl)](https://pypi.org/project/torch-treecrf/#files)
+[![Source](https://img.shields.io/badge/source-GitHub-303030.svg?maxAge=2678400&style=flat-square)](https://github.com/althonos/torch-treecrf/)
+[![GitHub issues](https://img.shields.io/github/issues/althonos/torch-treecrf.svg?style=flat-square&maxAge=600)](https://github.com/althonos/torch-treecrf/issues)
+[![Changelog](https://img.shields.io/badge/keep%20a-changelog-8A0707.svg?maxAge=2678400&style=flat-square)](https://github.com/althonos/torch-treecrf.py/blob/master/CHANGELOG.md)
+[![Downloads](https://img.shields.io/badge/dynamic/json?style=flat-square&color=303f9f&maxAge=86400&label=downloads&query=%24.total_downloads&url=https%3A%2F%2Fapi.pepy.tech%2Fapi%2Fprojects%2Ftorch-treecrf)](https://pepy.tech/project/torch-treecrf)
 
 ## 🗺️ Overview
 
-Conditional Random Fields (CRF) are a family of discriminative graphical models
-that can be used to model the dependencies between variables. The most common 
+[Conditional Random Fields](https://en.wikipedia.org/wiki/Conditional_random_field) 
+(CRF) are a family of discriminative graphical learning models that can be used 
+to model the dependencies between variables. The most common 
 form of CRFs are Linear-chain CRF, where a prediction depends on 
 an observed variable, as well as the prediction before and after it 
 (the *context*). Linear-chain CRFs are widely used in Natural Language Processing.
