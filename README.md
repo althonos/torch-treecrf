@@ -1,6 +1,6 @@
 # 🌲 `torch-treecrf`
 
-*A PyTorch implementation of Tree-structured Conditional Random Fields.*
+*A [PyTorch](https://pytorch.org/) implementation of Tree-structured Conditional Random Fields.*
 
 [![Actions](https://img.shields.io/github/actions/workflow/status/althonos/torch-treecrf/test.yml?branch=main&logo=github&style=flat-square&maxAge=300)](https://github.com/althonos/torch-treecrf/actions)
 [![Coverage](https://img.shields.io/codecov/c/gh/althonos/torch-treecrf?style=flat-square&maxAge=3600)](https://codecov.io/gh/althonos/torch-treecrf/)
@@ -16,11 +16,11 @@
 
 ## 🗺️ Overview
 
-[Conditional Random Fields](https://en.wikipedia.org/wiki/Conditional_random_field) 
-(CRF) are a family of discriminative graphical learning models that can be used 
-to model the dependencies between variables. The most common 
-form of CRFs are Linear-chain CRF, where a prediction depends on 
-an observed variable, as well as the prediction before and after it 
+[Conditional Random Fields](https://en.wikipedia.org/wiki/Conditional_random_field)
+(CRF) are a family of discriminative graphical learning models that can be used
+to model the dependencies between variables. The most common
+form of CRFs are Linear-chain CRF, where a prediction depends on
+an observed variable, as well as the prediction before and after it
 (the *context*). Linear-chain CRFs are widely used in Natural Language Processing.
 
 <p align="center">
@@ -31,8 +31,8 @@ $$
 P(Y | X) = \frac{1}{Z(X)} \prod_{i=1}^n{ \Psi_i(y_i, x_i) } \prod_{i=2}^n{ \Psi_{i-1,i}(y_{i-1}, y_i)}
 $$
 
-In 2006, Tang *et al.*[[1]](#ref1) introduced Tree-structured CRFs to model hierarchical 
-relationships between predicted variables, allowing dependencies between 
+In 2006, Tang *et al.*[[1]](#ref1) introduced Tree-structured CRFs to model hierarchical
+relationships between predicted variables, allowing dependencies between
 a prediction variable and its parents and children.
 
 <p align="center">
@@ -43,46 +43,45 @@ $$
 P(Y | X) = \frac{1}{Z(X)} \prod_{i=1}^{n}{ \Psi_i(y_i, x_i) } \prod_{j \in \mathcal{N}(i)}{ \Psi_{j,i}(y_j, y_i)}
 $$
 
-This package implements a generic Tree-structured CRF layer in Torch. The 
-layer can be stacked on top of a linear layer to implement a proper 
-Tree-structured CRF, or on any other kind of model producing emission scores
-in log-space for every class of each label. Computation of marginals is 
-implemented using Belief Propagation[[2]](#ref2), allowing for exact inference 
-on trees[[3]](#ref3):
+This package implements a generic Tree-structured CRF layer in PyTorch. The
+layer can be stacked on top of a [linear layer](https://pytorch.org/docs/stable/generated/torch.nn.Linear.html) to implement a proper Tree-structured CRF, or on any other kind of model
+producing emission scores in log-space for every class of each label. Computation
+of marginals is implemented using Belief Propagation[[2]](#ref2), allowing for
+exact inference on trees[[3]](#ref3):
 
 $$
 \begin{aligned}
-P(y_i | X) 
-& = 
-    \frac{1}{Z(X)} \Psi_i(y_i, x_i) 
+P(y_i | X)
+& =
+    \frac{1}{Z(X)} \Psi_i(y_i, x_i)
     & \underbrace{\prod_{j \in \mathcal{C}(i)}{\mu_{j \to i}(y_i)}} &
     & \underbrace{\prod_{j \in \mathcal{P}(i)}{\mu_{j \to i}(y_i)}} \\
-& = \frac1Z \Psi_i(y_i, x_i) 
+& = \frac1Z \Psi_i(y_i, x_i)
     & \alpha_i(y_i) &
     & \beta_i(y_i)  \\
 \end{aligned}
 $$
 
-where for every node $i$, the message from the parents $\mathcal{P}(i)$ and 
+where for every node $i$, the message from the parents $\mathcal{P}(i)$ and
 the children $\mathcal{C}(i)$ is computed recursively with the sum-product algorithm[[4]](#ref4):
 
 $$
 \begin{aligned}
-\forall j \in \mathcal{C}(i), \mu_{j \to i}(y_i) = \sum_{y_j}{ 
-  \Psi_{i,j}(y_i, y_j) 
-  \Psi_j(y_j, x_j) 
-  \prod_{k \in \mathcal{C}(j)}{\mu_{k \to j}(y_j)} 
+\forall j \in \mathcal{C}(i), \mu_{j \to i}(y_i) = \sum_{y_j}{
+  \Psi_{i,j}(y_i, y_j)
+  \Psi_j(y_j, x_j)
+  \prod_{k \in \mathcal{C}(j)}{\mu_{k \to j}(y_j)}
 } \\
-\forall j \in \mathcal{P}(i), \mu_{j \to i}(y_i) = \sum_{y_j}{ 
-  \Psi_{i,j}(y_i, y_j) 
-  \Psi_j(y_j, x_j) 
-  \prod_{k \in \mathcal{P}(j)}{\mu_{k \to j}(y_j)} 
+\forall j \in \mathcal{P}(i), \mu_{j \to i}(y_i) = \sum_{y_j}{
+  \Psi_{i,j}(y_i, y_j)
+  \Psi_j(y_j, x_j)
+  \prod_{k \in \mathcal{P}(j)}{\mu_{k \to j}(y_j)}
 } \\
 \end{aligned}
 $$
 
 
-*The implementation should be generic enough that any kind of [Directed acyclic graph](https://en.wikipedia.org/wiki/Directed_acyclic_graph) can be used as a label hierarchy, 
+*The implementation should be generic enough that any kind of [Directed acyclic graph](https://en.wikipedia.org/wiki/Directed_acyclic_graph) can be used as a label hierarchy,
 not just trees.*
 
 ## 🔧 Installing
@@ -103,9 +102,9 @@ $ pip install torch-treecrf
 
 ## 💡 Example
 
-To create a Tree-structured CRF, you must first define the tree encoding the 
+To create a Tree-structured CRF, you must first define the tree encoding the
 relationships between variables. Let's build a simple CRF for a root variable
-with two children: 
+with two children:
 
 <p align="center">
   <img height="150" src="https://github.com/althonos/torch-treecrf/raw/main/static/example.svg?raw=true">
@@ -122,15 +121,15 @@ hierarchy = torch_treecrf.TreeMatrix([
 ```
 
 Then, create the a CRF with the right number of features, depending on your
-feature space, like you would for a `torch.nn.Linear` module, to obtain 
+feature space, like you would for a `torch.nn.Linear` module, to obtain
 a Torch model:
 ```python
 crf = torch_treecrf.TreeCRF(n_features=30, hierarchy=hierarchy)
 ```
 
-If you wish to use the CRF layer only, use the `TreeCRFLayer` module, 
-which expects and outputs an emission tensor of shape 
-$(\star, L, C)$, where $\star$ is the minibatch size, $L$ the number of labels and 
+If you wish to use the CRF layer only, use the `TreeCRFLayer` module,
+which expects and outputs an emission tensor of shape
+$(\star, L, C)$, where $\star$ is the minibatch size, $L$ the number of labels and
 $C$ the number of class per label.
 
 
@@ -154,8 +153,8 @@ for more details.
 
 This library is provided under the [MIT License](https://choosealicense.com/licenses/mit/).
 
-*This library was developed by [Martin Larralde](https://github.com/althonos/) 
-during his PhD project at the [European Molecular Biology Laboratory](https://www.embl.de/) 
+*This library was developed by [Martin Larralde](https://github.com/althonos/)
+during his PhD project at the [European Molecular Biology Laboratory](https://www.embl.de/)
 in the [Zeller team](https://github.com/zellerlab).*
 
 ## 📚 References
