@@ -329,7 +329,7 @@ class TreeCRF(torch.nn.Module):
     def forward(self, X):
         emissions_pos = self.linear(X)
         emissions_all = torch.stack((-emissions_pos, emissions_pos), dim=2)
-        return self.crf(emissions_all)[:, 1].exp()
+        return self.crf(emissions_all)[:, :, 1].exp()
 
 
 
