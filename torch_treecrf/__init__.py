@@ -137,28 +137,6 @@ class TreeCRFLayer(torch.nn.Module):
 
         alphas = torch.zeros( emissions.shape[0], self.n_labels, self.n_classes, device=self.pairs.device)
 
-        # iterate from leaves to root
-        # for obs in range(emissions.shape[0]):
-        #     for j in reversed(self.hierarchy):
-        #         j_children = self.hierarchy.children(j)
-        #         for i in self.hierarchy.parents(j):
-        #             for x_i in range(self.n_labels):
-        #                 scores = self.pairs[i, j, x_i, :] + emissions[obs, j, :]
-        #                 assert scores.shape == ( self.n_labels, )
-        #                 for k in j_children:
-        #                     scores += messages[obs, k, j]
-        #                 messages[obs, j, i, x_i] = torch.logsumexp(scores, 0)
-
-        # for j in reversed(self.hierarchy):
-        #     j_children = self.hierarchy.children(j)
-        #     for i in self.hierarchy.parents(j):
-        #         for x_i in range(self.n_labels):
-        #             scores = self.pairs[i, j, x_i, :] + emissions[:, j, :]
-        #             assert scores.shape == ( emissions.shape[0], self.n_labels, )
-        #             for k in j_children:
-        #                 scores += messages[:, k, j]
-        #             messages[:, j, i, x_i] = torch.logsumexp(scores, 1)
-
         for j in reversed(self.labels):
             local_scores = emissions[:, j, :] + alphas[:, j, :]
             for i in self.labels.parents(j):
@@ -183,18 +161,6 @@ class TreeCRFLayer(torch.nn.Module):
         assert n_classes == self.n_classes
 
         betas = torch.zeros( emissions.shape[0], self.n_labels, self.n_classes, device=self.pairs.device)
-
-        # iterate from root to leaves
-        # for obs in range(emissions.shape[0]):
-        #     for j in self.hierarchy:
-        #         j_parents = self.hierarchy.parents(j)
-        #         for i in self.hierarchy.children(j):
-        #             for x_i in range(self.n_labels):
-        #                 scores = self.pairs[i, j, x_i, self.labels] + emissions[obs, j, self.labels]
-        #                 assert scores.shape == ( self.n_labels, )
-        #                 for k in j_parents:
-        #                     scores += messages[obs, k, j]
-        #                 messages[obs, j, i, x_i] = torch.logsumexp(scores, 0)
 
         for j in self.labels:
             local_scores = emissions[:, j, :] + betas[:, j, :]
