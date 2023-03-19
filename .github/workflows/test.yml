@@ -129,7 +129,6 @@ jobs:
   release:
     environment: GitHub Releases
     runs-on: ubuntu-latest
-    if: "startsWith(github.ref, 'refs/tags/v')"
     name: Release
     needs: upload
     steps:
@@ -137,5 +136,6 @@ jobs:
       uses: actions/checkout@v1
     - name: Release a Changelog
       uses: rasmus-saks/release-a-changelog-action@v1.0.1
+      if: startsWith(github.ref, 'refs/tags/v')
       with:
         github-token: '${{ secrets.GITHUB_TOKEN }}'
