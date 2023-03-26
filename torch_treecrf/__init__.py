@@ -32,8 +32,9 @@ class TreeCRFLayer(torch.nn.Module):
         self, 
         labels: TreeMatrix, 
         n_classes: int = 2, 
+        *,
         device=None, 
-        dtype=None
+        dtype=None,
     ):
         super().__init__()
 
@@ -58,7 +59,7 @@ class TreeCRFLayer(torch.nn.Module):
                 dtype=dtype or torch.float32,
             )
         )
-        torch.nn.init.uniform_(self.pairs, 0.1, 1.0)
+        torch.nn.init.zeros_(self.pairs)
 
     def load_state_dict(self, state, strict=True):
         super().load_state_dict(state, strict=strict)
