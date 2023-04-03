@@ -136,13 +136,12 @@ class TreeCRFLayer(torch.nn.Module):
         assert n_labels == self.n_labels
         assert n_classes == self.n_classes
 
-        alphas = torch.zeros( emissions.shape[0], self.n_labels, self.n_classes, device=self.pairs.device)
-
+        alphas = torch.zeros(emissions.shape[0], self.n_labels, self.n_classes, device=self.pairs.device)
         for j in reversed(self.labels):
-            local_scores = emissions[:, j, :] + alphas[:, j, :]
-            for i in self.labels.parents(j):
-                trans_scores = self.pairs[i, j, :, :].repeat(1, 1, batch_size).reshape(n_classes, batch_size, n_classes)
-                alphas[:, i, :] += torch.logsumexp(local_scores + trans_scores, dim=2).T
+            parents = self.labels.parents(j)
+            local = emissions[:, j].add(alphas[:, j]).unsqueeze(dim=0)
+            trans = self.pairs[parents, j].unsqueeze(dim=3).reshape(parents.shape[0], n_classes, 1, n_classes)
+            alphas[:, parents] += local.add(trans).logsumexp(dim=3).permute(2, 0, 1)
 
         return alphas
 
@@ -162,12 +161,11 @@ class TreeCRFLayer(torch.nn.Module):
         assert n_classes == self.n_classes
 
         betas = torch.zeros( emissions.shape[0], self.n_labels, self.n_classes, device=self.pairs.device)
-
         for j in self.labels:
-            local_scores = emissions[:, j, :] + betas[:, j, :]
-            for i in self.labels.children(j):
-                trans_scores = self.pairs[i, j, :, :].repeat(1, 1, batch_size).reshape(n_classes, batch_size, n_classes)
-                betas[:, i, :] += torch.logsumexp(local_scores + trans_scores, dim=2).T
+            children = self.labels.children(j)
+            local = emissions[:, j].add(betas[:, j]).unsqueeze(dim=0)
+            trans = self.pairs[children, j].unsqueeze(dim=3).reshape(children.shape[0], n_classes, 1, n_classes)
+            betas[:, children] += local.add(trans).logsumexp(dim=3).permute(2, 0, 1)
 
         return betas
 
