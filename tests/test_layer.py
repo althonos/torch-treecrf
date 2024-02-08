@@ -2,7 +2,7 @@ import unittest
 
 import torch.nn
 import torch.jit
-from torch_treecrf import TreeMatrix, TreeCRFLayer
+from torch_treecrf import TreeCRFLayer
 
 
 

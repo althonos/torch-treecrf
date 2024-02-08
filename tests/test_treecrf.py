@@ -1,7 +1,7 @@
 import unittest
 
 import torch
-from torch_treecrf import TreeCRF, TreeMatrix
+from torch_treecrf import TreeCRF
 
 
 
