@@ -10,20 +10,98 @@ References:
 
 """
 
+import collections
+import typing
+from typing import List
+
 import torch
-
-from .tree import TreeMatrix
-
+from torch import Tensor, LongTensor
 
 __version__ = "0.1.1"
 __author__ = "Martin Larralde"
 __license__ = "MIT"
 
 __all__ = [
-    "TreeMatrix",
     "TreeCRFLayer",
     "TreeCRF",
 ]
+
+def _parent_indices(adjacency: Tensor) -> List[LongTensor]:
+    return [
+        torch.nonzero(adjacency[i, :]).ravel()
+        for i in range(adjacency.shape[0]) 
+    ]
+
+
+def _child_indices(adjacency: Tensor) -> List[LongTensor]:
+    return [
+        torch.nonzero(adjacency[:, i]).ravel()
+        for i in range(adjacency.shape[0])
+    ]
+
+
+def _downward_walk(adjacency: Tensor, parents: List[LongTensor], children: List[LongTensor]) -> LongTensor:
+    """Generate a walk order to explore the tree from roots to leaves.
+    """
+    path = torch.full(adjacency.shape[:1], -1, dtype=torch.long, device=adjacency.device)
+    roots = torch.where(adjacency.sum(axis=1) == 0)[0]
+
+    n = 0
+    todo = collections.deque(roots)
+    done = torch.zeros(adjacency.shape[:1], dtype=torch.bool, device=adjacency.device)
+
+    while todo:
+        # get next node to visit
+        i = todo.popleft()
+        # skip if done already
+        if done[i]:
+            continue
+        # delay node visit if we didn't visit some of its parents yet
+        if not torch.all(done[parents[i]]):
+            todo.append(i)
+            continue
+        # add node children
+        todo.extend(children[i])
+        # mark node as done
+        done[i] = True
+        path[n] = i
+        n += 1
+
+    assert n == len(path)
+    assert done.count_nonzero() == adjacency.shape[0]
+    return path
+
+
+def _upward_walk(adjacency: Tensor, parents: List[LongTensor], children: List[LongTensor]) -> LongTensor:
+    """Generate a walk order to explore the tree from leaves to roots.
+    """
+    path = torch.full(adjacency.shape[:1], -1, dtype=torch.long, device=adjacency.device)
+    leaves = torch.where(adjacency.sum(axis=0) == 0)[0]
+
+    n = 0
+    todo = collections.deque(leaves)
+    done = torch.zeros(adjacency.shape[:1], dtype=torch.bool, device=adjacency.device)
+
+    while todo:
+        # get next node to visit
+        i = todo.popleft()
+        # skip if done already
+        if done[i]:
+            continue
+        # delay node visit if we didn't visit some of its parents yet
+        if not torch.all(done[children[i]]):
+            todo.append(i)
+            continue
+        # add node children
+        todo.extend(parents[i])
+        # mark node as done
+        done[i] = True
+        path[n] = i
+        n += 1
+
+    assert n == len(path)
+    assert done.count_nonzero() == adjacency.shape[0]
+    return path
 
 
 class TreeCRFLayer(torch.nn.Module):
@@ -63,15 +141,13 @@ class TreeCRFLayer(torch.nn.Module):
         self.adjacency = adjacency
 
         # iteration order and indices from adjacency matrix
-        mat = TreeMatrix(self.adjacency)
-        self.downward_order = mat._down.to(device)
-        self.upward_order = mat._up.to(device)
-        self.parent_labels = [mat._parents[i].to(device=device) for i in range(len(mat))]
-        self.children_labels = [mat._children[i].to(device=device) for i in range(len(mat))]
+        self.parent_labels = _parent_indices(adjacency)
+        self.children_labels = _child_indices(adjacency)
+        self.downward_order = _downward_walk(adjacency, self.parent_labels, self.children_labels)
+        self.upward_order = _upward_walk(adjacency, self.parent_labels, self.children_labels)
 
     def load_state_dict(self, state, strict=True):
         super().load_state_dict(state, strict=strict)
-        # self.labels = TreeMatrix(self.labels_data)
 
     def _free_energy(self, X, Y):
         r"""Compute the free energy of :math:`Y` given emissions :math:`X`.
