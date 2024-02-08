@@ -1,6 +1,7 @@
 import unittest
 
-import torch
+import torch.nn
+import torch.jit
 from torch_treecrf import TreeMatrix, TreeCRFLayer
 
 
@@ -11,8 +12,8 @@ class TestTreeCRFLayer(unittest.TestCase):
         """Check that `TreeCRFLayer` properly computes the partition function.
         """
 
-        matrix = TreeMatrix([[ 0, 0, 0 ], [ 1, 0, 0 ], [ 1, 0, 0 ]])
-        layer = TreeCRFLayer(matrix, n_classes=5)
+        adj = torch.tensor([[ 0, 0, 0 ], [ 1, 0, 0 ], [ 1, 0, 0 ]])
+        layer = TreeCRFLayer(adj, n_classes=5)
 
         # mock emission scores generated from a linear layer
         base_probas = torch.rand(100, layer.n_classes, layer.n_labels)
@@ -26,5 +27,15 @@ class TestTreeCRFLayer(unittest.TestCase):
                 self.assertAlmostEqual(torch.sum(probas[i, :, j]).item(), 1.0, places=3)
 
 
-  
+    def test_script(self):
+        adj = torch.tensor([[ 0, 0, 0 ], [ 1, 0, 0 ], [ 1, 0, 0 ]])
+        layer = TreeCRFLayer(adj, n_classes=5, device="cpu")
 
+        scripted_layer = torch.jit.script(layer)
+
+        # mock emission scores generated from a linear layer
+        base_probas = torch.rand(100, layer.n_classes, layer.n_labels)
+        base_probas /= base_probas.sum(dim=2).unsqueeze(2)
+        emissions = torch.log(base_probas)
+
+        probas = torch.exp(scripted_layer(emissions))

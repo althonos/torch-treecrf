@@ -5,29 +5,6 @@ from typing import Iterator, Union, Sequence
 import torch
 
 
-class _VariableColumnStorage:
-    """A compressed storage for tensors with variable number of columns.
-    """
-
-    def __init__(self, data: Sequence[torch.Tensor], device: Union[torch.device, str, None]=None, dtype: Union[torch.dtype, str, None]=None):
-        self.indices = torch.zeros(len(data)+1, device=device, dtype=torch.long)
-        self.data = torch.zeros(sum(len(row) for row in data), device=device, dtype=dtype)
-
-        for i, row in enumerate(data):
-            self.indices[i+1] = self.indices[i] + len(row)
-            self.data[self.indices[i]:self.indices[i+1]] = torch.as_tensor(row)
-
-    def __len__(self):
-        return self.indices.shape[0] - 1
-
-    def __getitem__(self, index: Union[int, slice]):
-        if isinstance(index, slice):
-            return type(self)([self[i] for i in range(*index.indices(len(self)))])
-        start = self.indices[index]
-        end = self.indices[index+1]
-        return self.data[start:end]
-
-
 class TreeMatrix:
     """A tree encoded as an incidence matrix.
     """
@@ -38,12 +15,12 @@ class TreeMatrix:
         self.data = _data.to_sparse()
 
         # cache parents and children
-        self._parents = _VariableColumnStorage(
+        self._parents = torch.nested.nested_tensor(
             [torch.where(_data[i, :] != 0)[0] for i in range(_data.shape[0])],
             device=device,
             dtype=torch.long
         )
-        self._children = _VariableColumnStorage(
+        self._children = torch.nested.nested_tensor(
             [torch.where(_data[:, i] != 0)[0] for i in range(_data.shape[0])],
             device=device,
             dtype=torch.long
