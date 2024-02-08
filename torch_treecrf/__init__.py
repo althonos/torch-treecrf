@@ -89,10 +89,10 @@ class TreeCRFLayer(torch.nn.Module):
 
         Arguments:
             X (torch.Tensor): Input emissions in log-space, as obtained
-                from a linear layer, of shape :math:`(*, L, C)` where 
+                from a linear layer, of shape :math:`(*, C, L)` where 
                 :math:`C` is the number of classes, and :math:`L` the number 
                 of labels.
-            Y (torch.Tensor): Labels vectors, of shape :math:`(*, C)`.
+            Y (torch.Tensor): Labels vectors, of shape :math:`(*, L)`.
 
         Returns:
             torch.Tensor: A tensor of shape :math:`(*)` with energy for
@@ -121,7 +121,7 @@ class TreeCRFLayer(torch.nn.Module):
         r"""Compute messages passed from the leaves to the roots.
 
         Messages are in log-space for numerical stability. The result in a
-        tensor :math:`A` of shape :math:`(*, L, C)` where :math:`*` is the 
+        tensor :math:`A` of shape :math:`(*, C, L)` where :math:`*` is the 
         batch size, :math:`C` is the number of classes, and :math:`L` the 
         number of labels, such that :math:`A[:, i, x_i] = \alpha_i(x_i)` is
         the sum of the messages passed from the children of :math:`i` to 
@@ -132,9 +132,11 @@ class TreeCRFLayer(torch.nn.Module):
                 (in log-space) of shape :math:`(n_classes, n_labels)`.
 
         """
-        batch_size, n_labels, n_classes = emissions.shape
+        batch_size, n_classes, n_labels = emissions.shape
         assert n_labels == self.n_labels
         assert n_classes == self.n_classes
+
+        emissions = emissions.permute(0, 2, 1)
 
         alphas = torch.zeros(emissions.shape[0], self.n_labels, self.n_classes, device=self.pairs.device)
         for j in reversed(self.labels):
@@ -143,22 +145,24 @@ class TreeCRFLayer(torch.nn.Module):
             trans = self.pairs[parents, j].unsqueeze(dim=3).reshape(parents.shape[0], n_classes, 1, n_classes)
             alphas[:, parents] += local.add(trans).logsumexp(dim=3).permute(2, 0, 1)
 
-        return alphas
+        return alphas.permute(0, 2, 1)
 
     def _downward_messages(self, emissions):
         r"""Compute messages passed from the roots to the leaves.
 
         Messages are in log-space for numerical stability. The result in a
-        tensor :math:`B` of shape :math:`(*, L, C)` where :math:`*` is the 
+        tensor :math:`B` of shape :math:`(*, C, L)` where :math:`*` is the 
         batch size, :math:`C` is the number of classes, and :math:`L` the 
         number of labels, such that :math:`B[:, i, x_i] = \beta_i(x_i)` is
         the sum of the messages passed from the parents of :math:`i` to 
         class :math:`i` for state :math:`x_i`.
 
         """
-        batch_size, n_labels, n_classes = emissions.shape
+        batch_size, n_classes, n_labels = emissions.shape
         assert n_labels == self.n_labels
         assert n_classes == self.n_classes
+
+        emissions = emissions.permute(0, 2, 1)
 
         betas = torch.zeros( emissions.shape[0], self.n_labels, self.n_classes, device=self.pairs.device)
         for j in self.labels:
@@ -167,7 +171,7 @@ class TreeCRFLayer(torch.nn.Module):
             trans = self.pairs[children, j].unsqueeze(dim=3).reshape(children.shape[0], n_classes, 1, n_classes)
             betas[:, children] += local.add(trans).logsumexp(dim=3).permute(2, 0, 1)
 
-        return betas
+        return betas.permute(0, 2, 1)
 
     def forward(self, X):
         r"""Compute the marginal probabilities for every label given :math:`X`.
@@ -242,10 +246,10 @@ class TreeCRFLayer(torch.nn.Module):
 
         :math:`\Alpha` and :math:`\Beta` can be computed efficiently with 
         the forward-backward algorithm, and stored in a tensor of shape
-        :math:`(*, L, C)`.
+        :math:`(*, C, L)`.
 
         """
-        batch_size, n_labels, n_classes = X.shape
+        batch_size, n_classes, n_labels = X.shape
         assert n_labels == self.n_labels
         assert n_classes == self.n_classes
 
@@ -253,7 +257,7 @@ class TreeCRFLayer(torch.nn.Module):
         betas = self._downward_messages(X)
 
         scores = X + alphas + betas
-        logZ = torch.logsumexp(scores, 2).unsqueeze(2)
+        logZ = torch.logsumexp(scores, dim=1).unsqueeze(dim=1)
         logP = scores - logZ
 
         assert torch.all(logP <= 0)
@@ -293,14 +297,5 @@ class TreeCRF(torch.nn.Module):
 
     def forward(self, X):
         emissions_pos = self.linear(X)
-        emissions_all = torch.stack((-emissions_pos, emissions_pos), dim=2)
-        return self.crf(emissions_all)[:, :, 1].exp()
-
-
-
-
-
-
-
-
-    
+        emissions_all = torch.stack((-emissions_pos, emissions_pos), dim=1)
+        return self.crf(emissions_all)[:, 1, :].exp()
