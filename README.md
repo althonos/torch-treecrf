@@ -110,10 +110,10 @@ with two children:
   <img height="150" src="https://github.com/althonos/torch-treecrf/raw/main/static/example.svg?raw=true">
 </p>
 
-First, define an incidence matrix $M$ representing the hierarchy, such that
+First, define an adjacency matrix $M$ representing the hierarchy, such that
 $M_{i,j}$ is $1$ if $j$ is a parent of $i$:
 ```python
-hierarchy = torch_treecrf.TreeMatrix([
+adjacency = torch.tensor([
     [0, 0, 0],
     [1, 0, 0],
     [1, 0, 0]
@@ -129,7 +129,7 @@ crf = torch_treecrf.TreeCRF(n_features=30, hierarchy=hierarchy)
 
 If you wish to use the CRF layer only, use the `TreeCRFLayer` module,
 which expects and outputs an emission tensor of shape
-$(\star, L, C)$, where $\star$ is the minibatch size, $L$ the number of labels and
+$(\star, C, L)$, where $\star$ is the minibatch size, $L$ the number of labels and
 $C$ the number of class per label.
 
 
