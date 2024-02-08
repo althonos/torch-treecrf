@@ -221,16 +221,14 @@ class TreeCRFLayer(torch.nn.Module):
         assert n_labels == self.n_labels
         assert n_classes == self.n_classes
 
-        emissions = emissions.permute(0, 2, 1)
-
-        alphas = torch.zeros(emissions.shape[0], self.n_labels, self.n_classes, device=self.pairs.device)
+        alphas = torch.zeros(emissions.shape[0], self.n_classes, self.n_labels, device=self.pairs.device)
         for j in self.upward_order:
             parents = self.parent_labels[j]
-            local = emissions[:, j].add(alphas[:, j]).unsqueeze(dim=0)
+            local = emissions[:, :, j].add(alphas[:, :, j]).unsqueeze(dim=0)
             trans = self.pairs[parents, j].unsqueeze(dim=3).reshape(parents.shape[0], n_classes, 1, n_classes)
-            alphas[:, parents] += local.add(trans).logsumexp(dim=3).permute(2, 0, 1)
+            alphas[:, :, parents] += local.add(trans).logsumexp(dim=3).permute(2, 1, 0)
 
-        return alphas.permute(0, 2, 1)
+        return alphas
 
     def _downward_messages(self, emissions):
         r"""Compute messages passed from the roots to the leaves.
@@ -247,16 +245,14 @@ class TreeCRFLayer(torch.nn.Module):
         assert n_labels == self.n_labels
         assert n_classes == self.n_classes
 
-        emissions = emissions.permute(0, 2, 1)
-
-        betas = torch.zeros(emissions.shape[0], self.n_labels, self.n_classes, device=self.pairs.device)
+        betas = torch.zeros(emissions.shape[0], self.n_classes, self.n_labels, device=self.pairs.device)
         for j in self.downward_order:
             children = self.children_labels[j]
-            local = emissions[:, j].add(betas[:, j]).unsqueeze(dim=0)
+            local = emissions[:, :, j].add(betas[:, :, j]).unsqueeze(dim=0)
             trans = self.pairs[children, j].unsqueeze(dim=3).reshape(children.shape[0], n_classes, 1, n_classes)
-            betas[:, children] += local.add(trans).logsumexp(dim=3).permute(2, 0, 1)
+            betas[:, :, children] += local.add(trans).logsumexp(dim=3).permute(2, 1, 0)
 
-        return betas.permute(0, 2, 1)
+        return betas
 
     def forward(self, X):
         r"""Compute the marginal probabilities for every label given :math:`X`.
