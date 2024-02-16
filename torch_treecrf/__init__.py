@@ -17,7 +17,7 @@ from typing import List
 import torch
 from torch import Tensor, LongTensor
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 __author__ = "Martin Larralde"
 __license__ = "MIT"
 
