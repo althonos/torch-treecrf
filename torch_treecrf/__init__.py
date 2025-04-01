@@ -355,31 +355,22 @@ class TreeCRF(torch.nn.Module):
 
         \Psi_i(y_i, x_i) = a^T x_i + b
 
-    This is slightly different from a multiclass problem, where the node
-    potentials would be taken as the logarithm of the probability from
-    the linear layer, i.e:
-
-    .. math::
-
-        \Psi_i(y_i, x_i) = \log(expit(a^T x_i + b))
-
     """
 
     def __init__(
         self,
-        in_features: int,
         adjacency: torch.Tensor,
+        *,
         device=None,
         dtype=None,
     ):
         factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
-
-        self.linear = torch.nn.Linear(in_features, adjacency.shape[0], **factory_kwargs)
-        self.crf = TreeCRFLayer(adjacency, **factory_kwargs)
+        self.crf = TreeCRFLayer(adjacency, n_classes=2, **factory_kwargs)
 
     def forward(self, X):
-        emissions_pos = self.linear(X)
-        emissions_all = torch.stack((-emissions_pos, emissions_pos), dim=1)
-        logp = self.crf(emissions_all)
-        return logp[:, 1, :] - logp[:, 0, :]  # logit
+        batch_size, n_labels = X.shape
+        assert n_labels == self.crf.n_labels
+        E = torch.stack((-X, X), dim=1)
+        logp = self.crf(E)
+        return logp[:, 1, :] - logp[:, 0, :]
