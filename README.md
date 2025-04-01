@@ -120,18 +120,19 @@ adjacency = torch.tensor([
 ])
 ```
 
-Then, create the a CRF with the right number of features, depending on your
-feature space, like you would for a `torch.nn.Linear` module, to obtain
-a Torch model:
+Then create the CRF by giving it the adjacency matrix as the hyperparameter:
 ```python
-crf = torch_treecrf.TreeCRF(n_features=30, hierarchy=hierarchy)
+crf = torch_treecrf.TreeCRF(adjacency)
 ```
 
-If you wish to use the CRF layer only, use the `TreeCRFLayer` module,
-which expects and outputs an emission tensor of shape
-$(\star, C, L)$, where $\star$ is the minibatch size, $L$ the number of labels and
-$C$ the number of class per label.
+The `TreeCRF` expects local emission scores as a tensor of shape $(\star, L)$
+where $\star$ is the minibatch size and $L$ the number of labels, and returns 
+a tensor of logits of the same shape.
 
+You can also use the CRF layer for cases where labels have more than two
+classes; in which case use the `TreeCRFLayer` module, which expects an 
+emission tensor of shape $(\star, C, L)$, where $\star$ is the minibatch size, $L$ the number of labels and $C$ the number of class per label, and returns
+a tensor $log P(Y | X)$ of the same shape.
 
 ## 💭 Feedback
 
