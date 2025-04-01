@@ -221,11 +221,11 @@ class TreeCRFLayer(torch.nn.Module):
         assert n_labels == self.n_labels
         assert n_classes == self.n_classes
 
-        alphas = torch.zeros(emissions.shape[0], self.n_classes, self.n_labels, device=self.pairs.device)
+        alphas = torch.zeros(batch_size, self.n_classes, self.n_labels, device=self.pairs.device)
         for j in self.upward_order:
-            parents = self.parent_labels[j]
-            local = emissions[:, :, j].add(alphas[:, :, j]).unsqueeze(dim=0)
-            trans = self.pairs[parents, j].unsqueeze(dim=3).reshape(parents.shape[0], n_classes, 1, n_classes)
+            parents = self.parent_labels[j]  # shape: (n_parents,)
+            local = emissions[:, :, j].add(alphas[:, :, j]).unsqueeze(dim=0)  # shape: (batch_size, n_classes, 1)
+            trans = self.pairs[parents, j].unsqueeze(dim=2)  # shape: (n_parents, n_classes, 1, n_classes)
             alphas[:, :, parents] += local.add(trans).logsumexp(dim=3).permute(2, 1, 0)
 
         return alphas
@@ -245,11 +245,11 @@ class TreeCRFLayer(torch.nn.Module):
         assert n_labels == self.n_labels
         assert n_classes == self.n_classes
 
-        betas = torch.zeros(emissions.shape[0], self.n_classes, self.n_labels, device=self.pairs.device)
+        betas = torch.zeros(batch_size, self.n_classes, self.n_labels, device=self.pairs.device)
         for j in self.downward_order:
-            children = self.children_labels[j]
-            local = emissions[:, :, j].add(betas[:, :, j]).unsqueeze(dim=0)
-            trans = self.pairs[children, j].unsqueeze(dim=3).reshape(children.shape[0], n_classes, 1, n_classes)
+            children = self.children_labels[j]  # shape: (n_parents,)
+            local = emissions[:, :, j].add(betas[:, :, j]).unsqueeze(dim=0)  # shape: (batch_size, n_classes, 1)
+            trans = self.pairs[children, j].unsqueeze(dim=2)  # shape: (n_parents, n_classes, 1, n_classes)
             betas[:, :, children] += local.add(trans).logsumexp(dim=3).permute(2, 1, 0)
 
         return betas
@@ -381,4 +381,5 @@ class TreeCRF(torch.nn.Module):
     def forward(self, X):
         emissions_pos = self.linear(X)
         emissions_all = torch.stack((-emissions_pos, emissions_pos), dim=1)
-        return self.crf(emissions_all)[:, 1, :].exp()
+        logp = self.crf(emissions_all)
+        return logp[:, 1, :] - logp[:, 0, :]  # logit
