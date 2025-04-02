@@ -29,7 +29,7 @@ __all__ = [
 def _parent_indices(adjacency: Tensor) -> List[LongTensor]:
     return [
         torch.nonzero(adjacency[i, :]).ravel()
-        for i in range(adjacency.shape[0]) 
+        for i in range(adjacency.shape[0])
     ]
 
 
@@ -104,6 +104,41 @@ def _upward_walk(adjacency: Tensor, parents: List[LongTensor], children: List[Lo
     return path
 
 
+class MessagePassing(torch.nn.Module):
+
+    def __init__(
+        self,
+        order: Tensor,
+        successors: List[LongTensor],
+        *,
+        device=None
+    ):
+        super().__init__()
+        self.order = order
+        # store iteration order in a compressed sparse tensor
+        self.data = torch.concat(successors).to(device=device)
+        self.offsets = torch.zeros( len(successors) + 1, dtype=torch.long, device=device )
+        for i in range(len(successors)):
+            self.offsets[i+1] = self.offsets[i] + len(successors[i])
+
+    def forward(
+        self,
+        emissions,
+        transitions,
+    ):
+        batch_size, n_classes, n_labels = emissions.shape
+        messages = torch.zeros_like(emissions)
+        for j in self.order:
+            successors = self.data[self.offsets[j]:self.offsets[j+1]]
+            if successors.size(0) > 0:
+                local = emissions[:, :, j]  # shape: (batch_size, n_classes)
+                msg = messages[:, :, j]  # shape: (batch_size, n_classes)
+                trans = transitions[successors, j]  # shape: (n_succ, n_classes, n_classes)
+                elem = local.add(msg).unsqueeze(dim=0).add(trans.unsqueeze(dim=2))
+                messages[:, :, successors] += elem.logsumexp(dim=3).permute(2, 1, 0)
+        return messages
+
+
 class TreeCRFLayer(torch.nn.Module):
 
     def __init__(
@@ -124,138 +159,68 @@ class TreeCRFLayer(torch.nn.Module):
         self.n_labels = adjacency.shape[0]
         self.n_classes = n_classes
 
-        # `self.pairs[i, j, x_i, x_j]` stores the transitions from
-        # class `x_i` of label `i` to class `x_j` of label `j`
-        self.pairs = torch.nn.Parameter(
-            torch.zeros(
-                self.n_labels,
-                self.n_labels,
-                self.n_classes,
-                self.n_classes,
-                requires_grad=True,
-                **factory_kwargs
-            )
-        )
-
         # class hierarchy stored as an adjacency matrix
         self.adjacency = adjacency
 
         # iteration order and indices from adjacency matrix
-        self.parent_labels = _parent_indices(adjacency)
-        self.children_labels = _child_indices(adjacency)
-        self.downward_order = _downward_walk(adjacency, self.parent_labels, self.children_labels)
-        self.upward_order = _upward_walk(adjacency, self.parent_labels, self.children_labels)
+        parent_labels = _parent_indices(adjacency)
+        children_labels = _child_indices(adjacency)
+        downward_order = _downward_walk(adjacency, parent_labels, children_labels)
+        upward_order = _upward_walk(adjacency, parent_labels, children_labels)
+
+        # message passing
+        self.alphas = MessagePassing(upward_order, parent_labels)
+        self.betas = MessagePassing(downward_order, children_labels)
 
     def load_state_dict(self, state, strict=True):
         super().load_state_dict(state, strict=strict)
 
-    def _free_energy(self, X, Y):
-        r"""Compute the free energy of :math:`Y` given emissions :math:`X`.
-
-        The free energy of a label vector can be computed with the following
-        definition for a conditional random field:
-
-        .. math::
-
-            E(X, Y) = \sum_{i}{ \Psi_i(y_i, x_i) }
-                    + \sum_{i, j}{ \Psi_{i, j}(y_i, y_j) }
-
-        such that the conditional probability :math:`P(Y | X)` can be
-        expressed as:
-
-        .. math::
-
-            P(Y | X) = \frac{1}{Z(X)} \exp{E(X, Y)}
-
-        where :math:`Z` is the *partition function*, that is computed for
-        each emission scores such that probabilities are well-defined for
-        the entire event universe.
-
-        Arguments:
-            X (torch.Tensor): Input emissions in log-space, as obtained
-                from a linear layer, of shape :math:`(*, C, L)` where
-                :math:`C` is the number of classes, and :math:`L` the number
-                of labels.
-            Y (torch.Tensor): Labels vectors, of shape :math:`(*, L)`.
-
-        Returns:
-            torch.Tensor: A tensor of shape :math:`(*)` with energy for
-            each batch member, in log-space.
-
-        """
-        assert X.shape[0] == classes.shape[0]
-        assert classes.shape[1] == self.n_labels
-
-        energy = torch.zeros(X.shape[0], device=DEVICE)
-
-        for i in range(self.n_labels):
-
-            # For each i, take log(P(Yi = yi)), whic corresponds to
-            energy += X[:, i].gather(1, Y[:, i].unsqueeze(1)).squeeze()
-
-            # For each (i, j) neighbors in the polytree,
-            # compute pairwise potential
-            # TODO: vectorize?
-            neighbors = torch.cat([ self.parents[i], self.children[i] ])
-            for j in neighbors:
-                energy += self.pairs[i, j, Y[:, i], Y[:, j]]
-
-        return energy
-
-    def _upward_messages(self, emissions):
+    def _upward_messages(self, emissions, transitions):
         r"""Compute messages passed from the leaves to the roots.
 
         Messages are in log-space for numerical stability. The result in a
         tensor :math:`A` of shape :math:`(*, C, L)` where :math:`*` is the
         batch size, :math:`C` is the number of classes, and :math:`L` the
-        number of labels, such that :math:`A[:, i, x_i] = \alpha_i(x_i)` is
+        number of labels, such that :math:`A[:, i, x_i] = log \alpha_i(x_i)` is
         the sum of the messages passed from the children of :math:`i` to
         class :math:`i` for state :math:`x_i`.
 
         Arguments:
             emissions (`torch.Tensor`): A tensor containing emission scores
-                (in log-space) of shape :math:`(n_classes, n_labels)`.
+                (in log-space) of shape :math:`(*, C, L)`.
+            transitions (`torch.Tensor`): A tensor containing transition
+                scores of shape :math:`(L, L, C, C)`.
 
         """
         batch_size, n_classes, n_labels = emissions.shape
         assert n_labels == self.n_labels
         assert n_classes == self.n_classes
+        return self.alphas(emissions, transitions)
 
-        alphas = torch.zeros(batch_size, self.n_classes, self.n_labels, device=self.pairs.device)
-        for j in self.upward_order:
-            parents = self.parent_labels[j]  # shape: (n_parents,)
-            local = emissions[:, :, j].add(alphas[:, :, j]).unsqueeze(dim=0)  # shape: (batch_size, n_classes, 1)
-            trans = self.pairs[parents, j].unsqueeze(dim=2)  # shape: (n_parents, n_classes, 1, n_classes)
-            alphas[:, :, parents] += local.add(trans).logsumexp(dim=3).permute(2, 1, 0)
-
-        return alphas
-
-    def _downward_messages(self, emissions):
+    def _downward_messages(self, emissions, transitions):
         r"""Compute messages passed from the roots to the leaves.
 
         Messages are in log-space for numerical stability. The result in a
         tensor :math:`B` of shape :math:`(*, C, L)` where :math:`*` is the
         batch size, :math:`C` is the number of classes, and :math:`L` the
-        number of labels, such that :math:`B[:, i, x_i] = \beta_i(x_i)` is
+        number of labels, such that :math:`B[:, i, x_i] = log \beta_i(x_i)` is
         the sum of the messages passed from the parents of :math:`i` to
         class :math:`i` for state :math:`x_i`.
+
+        Arguments:
+            emissions (`torch.Tensor`): A tensor containing emission scores
+                (in log-space) of shape :math:`(*, C, L)`.
+            transitions (`torch.Tensor`): A tensor containing transition
+                scores of shape :math:`(L, L, C, C)`.
 
         """
         batch_size, n_classes, n_labels = emissions.shape
         assert n_labels == self.n_labels
         assert n_classes == self.n_classes
+        return self.betas(emissions, transitions)
 
-        betas = torch.zeros(batch_size, self.n_classes, self.n_labels, device=self.pairs.device)
-        for j in self.downward_order:
-            children = self.children_labels[j]  # shape: (n_parents,)
-            local = emissions[:, :, j].add(betas[:, :, j]).unsqueeze(dim=0)  # shape: (batch_size, n_classes, 1)
-            trans = self.pairs[children, j].unsqueeze(dim=2)  # shape: (n_parents, n_classes, 1, n_classes)
-            betas[:, :, children] += local.add(trans).logsumexp(dim=3).permute(2, 1, 0)
-
-        return betas
-
-    def forward(self, X):
-        r"""Compute the marginal probabilities for every label given :math:`X`.
+    def forward(self, emissions, transitions):
+        r"""Compute marginal log-probabilities for every label.
 
         By definition, in a CRF the conditional probability for is defined as:
 
@@ -329,31 +294,36 @@ class TreeCRFLayer(torch.nn.Module):
         the forward-backward algorithm, and stored in a tensor of shape
         :math:`(*, C, L)`.
 
+        Arguments:
+            emissions (`torch.tensor` of shape $(*, C, L)$): The values
+                of unary feature functions for the batch, i.e
+                :math:`\f_i(y_i, x_i)` used to compute the potentials
+                :math:`\Psi_i(y_i, x_i) = exp(\sum{\theta \f_i(y_i, x_i)})`.
+            transitions (`torch.tensor` of shape $(L, L, C, C)$): The
+                values of binary feature functions, i.e.
+                :math:`\f_{i,j}(y_i, y_j)` used to compute the potentials
+                :math:`\Psi_{i,j}(y_i, y_j) = exp(\sum{\theta \f_{i,j}(y_i, y_j)})`.
+
         """
-        batch_size, n_classes, n_labels = X.shape
+        batch_size, n_classes, n_labels = emissions.shape
         assert n_labels == self.n_labels
         assert n_classes == self.n_classes
 
-        alphas = self._upward_messages(X)
-        betas = self._downward_messages(X)
+        alphas = self._upward_messages(emissions, transitions)
+        betas = self._downward_messages(emissions, transitions)
 
-        scores = X + alphas + betas
+        scores = emissions + alphas + betas
         logZ = torch.logsumexp(scores, dim=1).unsqueeze(dim=1)
         logP = scores - logZ
 
-        assert torch.all(logP <= 0)
         return logP
 
 
 class TreeCRF(torch.nn.Module):
-    """A Tree-structured CRF for binary classification of labels.
+    r"""A Tree-structured CRF for binary classification of labels.
 
-    This implementation uses raw emission scores from a linear layer for
-    the node potentials:
-
-    .. math::
-
-        \Psi_i(y_i, x_i) = a^T x_i + b
+    This implementation uses unary feature scores from a previous layer and
+    learns the binary feature scores.
 
     """
 
@@ -367,10 +337,20 @@ class TreeCRF(torch.nn.Module):
         factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
         self.crf = TreeCRFLayer(adjacency, n_classes=2, **factory_kwargs)
+        self.transitions = torch.nn.Parameter(
+            torch.ones(
+                adjacency.shape[0],
+                adjacency.shape[0],
+                2,
+                2,
+                requires_grad=True,
+                **factory_kwargs,
+            )
+        )
 
     def forward(self, X):
         batch_size, n_labels = X.shape
         assert n_labels == self.crf.n_labels
-        E = torch.stack((-X, X), dim=1)
-        logp = self.crf(E)
+        emissions = torch.stack((-X, X), dim=1)
+        logp = self.crf(emissions, self.transitions)
         return logp[:, 1, :] - logp[:, 0, :]
