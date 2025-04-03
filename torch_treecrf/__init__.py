@@ -114,12 +114,16 @@ class MessagePassing(torch.nn.Module):
         device=None
     ):
         super().__init__()
+        # store iteration order
         self.order = order
-        # store iteration order in a compressed sparse tensor
+        # store successors for each label in a compressed sparse tensor
         self.data = torch.concat(successors).to(device=device)
         self.offsets = torch.zeros( len(successors) + 1, dtype=torch.long, device=device )
         for i in range(len(successors)):
             self.offsets[i+1] = self.offsets[i] + len(successors[i])
+
+    def successors(self, i):
+        return self.data[self.offsets[i]:self.offsets[i+1]]
 
     def forward(
         self,
@@ -129,13 +133,64 @@ class MessagePassing(torch.nn.Module):
         batch_size, n_classes, n_labels = emissions.shape
         messages = torch.zeros_like(emissions)
         for j in self.order:
-            successors = self.data[self.offsets[j]:self.offsets[j+1]]
+            successors = self.successors(j)
             if successors.size(0) > 0:
                 local = emissions[:, :, j]  # shape: (batch_size, n_classes)
                 msg = messages[:, :, j]  # shape: (batch_size, n_classes)
                 trans = transitions[successors, j]  # shape: (n_succ, n_classes, n_classes)
                 elem = local.add(msg).unsqueeze(dim=0).add(trans.unsqueeze(dim=2))
                 messages[:, :, successors] += elem.logsumexp(dim=3).permute(2, 1, 0)
+        return beliefs
+
+
+class BatchedMessagePassing(MessagePassing):
+
+    def __init__(
+        self,
+        order: Tensor,
+        successors: List[LongTensor],
+        *,
+        device=None
+    ):
+        super().__init__(order, successors, device=device)
+        # compute depth of each layer
+        self.depths = torch.zeros(len(self.order), dtype=torch.long)
+        for i in self.order:
+            s = self.successors(i)
+            self.depths[s] = torch.max(self.depths[i] + 1, self.depths[s])
+        # compute which labels belong to which layer
+        for depth in range(self.depths.max() + 1):
+            layer = torch.nonzero(self.depths == depth, as_tuple=True)[0]
+            self.register_buffer(f"layer{depth}", layer, persistent=False)
+        # compute the indicator for the labels
+        for depth in range(self.depths.max() + 1):
+            layer = getattr(self, f"layer{depth}")
+            s = torch.zeros((len(layer), len(self.order)), device=device )
+            for i, j in enumerate(layer):
+                s[i, self.successors(j)] = 1.0
+            self.register_buffer(f"successor{depth}", s, persistent=False)
+
+    def forward(
+        self,
+        emissions,
+        transitions,
+    ):
+        batch_size, n_classes, n_labels = emissions.shape
+        messages = torch.zeros_like(emissions)
+        alphas = torch.zeros_like(emissions)
+
+        for depth in range(self.depths.max() + 1):
+            # get layer selectors
+            layer = getattr(self, f"layer{depth}")
+            indic = getattr(self, f"successor{depth}")
+            # compute message for all nodes of the current depth
+            local = emissions[:, :, layer].reshape(1, 1, batch_size, n_classes, -1)
+            msg = messages[:, :, layer].reshape(1, 1, batch_size, n_classes, -1)
+            trans = transitions[:, layer].unsqueeze(dim=-2).permute(0, 2, 3, 4, 1)
+            elem = local.add(msg).add(trans).logsumexp(dim=3)
+            # update the message of parents
+            messages += torch.einsum('lkji,il->jkl', elem, indic)
+
         return messages
 
 
@@ -146,6 +201,7 @@ class TreeCRFLayer(torch.nn.Module):
         adjacency: torch.Tensor,
         n_classes: int = 2,
         *,
+        message_passing: str = "layer",
         device=None,
         dtype=None,
     ):
@@ -169,8 +225,15 @@ class TreeCRFLayer(torch.nn.Module):
         upward_order = _upward_walk(adjacency, parent_labels, children_labels)
 
         # message passing
-        self.alphas = MessagePassing(upward_order, parent_labels)
-        self.betas = MessagePassing(downward_order, children_labels)
+        self.message_passing = message_passing
+        if message_passing == "layer":
+            self.alphas = BatchedMessagePassing(upward_order, parent_labels)
+            self.betas = BatchedMessagePassing(downward_order, children_labels)
+        elif message_passing == "single":
+            self.alphas = MessagePassing(upward_order, parent_labels)
+            self.betas = MessagePassing(downward_order, children_labels)
+        else:
+            raise ValueError(f"invalid mode for message passing: {message_passing!r}")
 
     def load_state_dict(self, state, strict=True):
         super().load_state_dict(state, strict=strict)
@@ -331,12 +394,18 @@ class TreeCRF(torch.nn.Module):
         self,
         adjacency: torch.Tensor,
         *,
+        message_passing: str = "layer",
         device=None,
         dtype=None,
     ):
         factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
-        self.crf = TreeCRFLayer(adjacency, n_classes=2, **factory_kwargs)
+        self.crf = TreeCRFLayer(
+            adjacency,
+            n_classes=2,
+            message_passing=message_passing,
+            **factory_kwargs
+        )
         self.transitions = torch.nn.Parameter(
             torch.ones(
                 adjacency.shape[0],
