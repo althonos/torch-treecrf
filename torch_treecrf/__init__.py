@@ -12,7 +12,7 @@ References:
 
 import collections
 import typing
-from typing import List
+from typing import List, Tuple
 
 import torch
 from torch import Tensor, LongTensor
@@ -143,6 +143,26 @@ class MessagePassing(torch.nn.Module):
         return beliefs
 
 
+class _BatchedMessagePassingLayer(torch.nn.Module):
+
+    def __init__(self, layer, successor):
+        super().__init__()
+        self.register_buffer("layer", layer)
+        self.register_buffer("successor", successor)
+
+    def forward(self, emissions: torch.Tensor, transitions: torch.Tensor, messages: torch.Tensor) -> Tuple[ torch.Tensor, torch.Tensor, torch.Tensor ]:
+        # extract dimensions
+        batch_size, n_classes, n_labels = emissions.shape
+        # compute message for all nodes of the current depth
+        local = emissions[:, :, self.layer].reshape(1, 1, batch_size, n_classes, -1)
+        msg = messages[:, :, self.layer].reshape(1, 1, batch_size, n_classes, -1)
+        trans = transitions[:, self.layer].unsqueeze(dim=-2).permute(0, 2, 3, 4, 1)
+        elem = local.add(msg).add(trans).logsumexp(dim=3)
+        # update the message of parents
+        messages += torch.einsum('lkji,il->jkl', elem, self.successor)
+        return emissions, transitions, messages
+
+
 class BatchedMessagePassing(MessagePassing):
 
     def __init__(
@@ -153,22 +173,31 @@ class BatchedMessagePassing(MessagePassing):
         device=None
     ):
         super().__init__(order, successors, device=device)
+
         # compute depth of each layer
         self.depths = torch.zeros(len(self.order), dtype=torch.long)
         for i in self.order:
             s = self.successors(i)
             self.depths[s] = torch.max(self.depths[i] + 1, self.depths[s])
-        # compute which labels belong to which layer
-        for depth in range(self.depths.max() + 1):
+        self.max_depth = self.depths.max().item() + 1
+
+        self.layers = torch.nn.ModuleList()
+
+        for depth in range(self.max_depth):
+            # compute which labels belong to which layer
             layer = torch.nonzero(self.depths == depth, as_tuple=True)[0]
-            self.register_buffer(f"layer{depth}", layer, persistent=False)
-        # compute the indicator for the labels
-        for depth in range(self.depths.max() + 1):
-            layer = getattr(self, f"layer{depth}")
+            # self.register_buffer(f"layer{depth}", layer, persistent=False)
+
+            # compute the indicator for the labels
             s = torch.zeros((len(layer), len(self.order)), device=device )
             for i, j in enumerate(layer):
                 s[i, self.successors(j)] = 1.0
-            self.register_buffer(f"successor{depth}", s, persistent=False)
+
+            self.layers.append(_BatchedMessagePassingLayer(layer, s))
+            # self.register_buffer(f"successor{depth}", s, persistent=False)
+
+        # for
+
 
     def forward(
         self,
@@ -177,19 +206,9 @@ class BatchedMessagePassing(MessagePassing):
     ):
         batch_size, n_classes, n_labels = emissions.shape
         messages = torch.zeros_like(emissions)
-        alphas = torch.zeros_like(emissions)
 
-        for depth in range(self.depths.max() + 1):
-            # get layer selectors
-            layer = getattr(self, f"layer{depth}")
-            indic = getattr(self, f"successor{depth}")
-            # compute message for all nodes of the current depth
-            local = emissions[:, :, layer].reshape(1, 1, batch_size, n_classes, -1)
-            msg = messages[:, :, layer].reshape(1, 1, batch_size, n_classes, -1)
-            trans = transitions[:, layer].unsqueeze(dim=-2).permute(0, 2, 3, 4, 1)
-            elem = local.add(msg).add(trans).logsumexp(dim=3)
-            # update the message of parents
-            messages += torch.einsum('lkji,il->jkl', elem, indic)
+        for layer in self.layers:
+            emissions, transitions, messages = layer(emissions, transitions, messages)
 
         return messages
 

@@ -20,8 +20,11 @@ class TestTreeCRFLayer(unittest.TestCase):
         base_probas /= base_probas.sum(dim=2).unsqueeze(2)
         emissions = torch.log(base_probas)
 
+        # mock transition scores
+        transitions = torch.ones((3, 3, 5, 5))
+
         # check that the CRF computes probabilities that sum to 1.0 for all labels
-        probas = torch.exp(layer(emissions)) 
+        probas = torch.exp(layer(emissions, transitions)) 
         for i in range(emissions.shape[0]):
             for j in range(layer.n_labels):
                 self.assertAlmostEqual(torch.sum(probas[i, :, j]).item(), 1.0, places=3)
@@ -38,4 +41,7 @@ class TestTreeCRFLayer(unittest.TestCase):
         base_probas /= base_probas.sum(dim=2).unsqueeze(2)
         emissions = torch.log(base_probas)
 
-        probas = torch.exp(scripted_layer(emissions))
+        # mock transition scores
+        transitions = torch.ones((3, 3, 5, 5))
+
+        probas = torch.exp(scripted_layer(emissions, transitions))
