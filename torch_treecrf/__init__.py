@@ -140,7 +140,7 @@ class MessagePassing(torch.nn.Module):
                 trans = transitions[successors, j]  # shape: (n_succ, n_classes, n_classes)
                 elem = local.add(msg).unsqueeze(dim=0).add(trans.unsqueeze(dim=2))
                 messages[:, :, successors] += elem.logsumexp(dim=3).permute(2, 1, 0)
-        return beliefs
+        return messages
 
 
 class _BatchedMessagePassingLayer(torch.nn.Module):
