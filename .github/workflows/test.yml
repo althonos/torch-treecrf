@@ -13,25 +13,14 @@ jobs:
       OS: Linux
     strategy:
       matrix:
-        include:
-        - python-version: "3.6"
-          python-release: v3.6
-          python-impl: CPython
-        - python-version: "3.7"
-          python-release: v3.7
-          python-impl: CPython
-        - python-version: "3.8"
-          python-release: v3.8
-          python-impl: CPython
-        - python-version: "3.9"
-          python-release: v3.9
-          python-impl: CPython
-        - python-version: "3.10"
-          python-release: v3.10
-          python-impl: CPython
-        - python-version: "3.11"
-          python-release: v3.11
-          python-impl: CPython
+        python-version: 
+        - "3.7"
+        - "3.8"
+        - "3.9"
+        - "3.10"
+        - "3.11"
+        - "3.12"
+        - "3.13"
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
@@ -52,7 +41,7 @@ jobs:
     - name: Upload to Codecov
       uses: codecov/codecov-action@v5
       with:
-        flags: ${{ matrix.python-impl }},${{ matrix.python-release }}
+        flags: ${{ matrix.python-version }}
         env_vars: OS
         name: test-python-${{ matrix.python-version }}
         fail_ci_if_error: true
